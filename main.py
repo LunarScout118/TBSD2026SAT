@@ -480,7 +480,6 @@ if __name__ == "__main__": # Though not needed, it is nice to have
             with open(bkp, "r", encoding="UTF-8") as f: rt = json.load(f)
         else: sys.exit(1)
 
-    a = qa([])
     w = gui()
 
     w.adjustSize()
