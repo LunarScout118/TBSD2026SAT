@@ -453,7 +453,6 @@ if __name__ == "__main__": # Though not needed, it is nice to have
     bkp = os.path.join(pth, "bkp.json")
 
     try:
-        raise rq.exceptions.ConnectionError
         res = rq.get("https://api.frankfurter.dev/v2/rates?base=AUD", timeout=(5,30))
         res.raise_for_status()
         res = res.json()
