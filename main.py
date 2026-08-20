@@ -1,5 +1,5 @@
 # Tobey Beer - Holiday Budget Planner
-# Last edit: 17 Aug 2026
+# Last edit: 20 Aug 2026
 
 # Country + city list
 from pycountry import countries as cl
@@ -13,7 +13,6 @@ from babel.numbers import (
     list_currencies as lc,
     get_territory_currencies as gtc,
     format_currency as fmt,
-    LC_MONETARY as lcm,
 )
 
 # GUI imports
@@ -227,7 +226,6 @@ class gui(qw): # Main gui
 
         self.cr = 0.0 # Conversion rate
         self.crl = ql("Current conversion rate: ---") # Conversion rate label
-        self.crl.setToolTip("DISCLAIMER: Past performance is not a reliable indicator of future performance.\nProgram may be subject to floating-point errors.")
         self.dcc.addWidget(self.crl)
 
         self.ml.addLayout(self.col1)
@@ -242,9 +240,9 @@ class gui(qw): # Main gui
         self.usz()
 
         self.vcbb = qb("View current budget")
-        self.sbb = qb("Save budget to TXT")
+        self.sbb = qb("View disclaimer")
         self.vcbb.clicked.connect(self.vcb)
-        self.sbb.clicked.connect(self.sb)
+        self.sbb.clicked.connect(self.vdc)
         self.hcc.addWidget(self.vcbb)
         self.dcc.addWidget(self.sbb)
     
@@ -340,11 +338,51 @@ class gui(qw): # Main gui
         self.btb.tbl.setMinimumWidth(self.btb.tbl.verticalHeader().width() + self.btb.tbl.horizontalHeader().length() + self.btb.tbl.frameWidth()*2)
         self.adjustSize()
 
+    def vb(self): # Validate budget
+        errs = []
+
+        if self.hcc.coscb.currentText() == "": errs.append("Select a home country.")
+        if self.hcc.ciscb.currentText() == "": errs.append("Select a home city.")
+        if self.hcc.curscb.currentText() == "": errs.append("Select a home currency.")
+
+        if self.dcc.coscb.currentText() == "": errs.append("Select a destination country.")
+        if self.dcc.ciscb.currentText() == "": errs.append("Select a destination city.")
+        if self.dcc.curscb.currentText() == "": errs.append("Select a destination currency.")
+
+        if self.cr <= 0: errs.append("A valid currency conversion rate is required.")
+
+        rc = 0
+
+        for r in range(self.btb.tbl.rowCount()):
+            ni = self.btb.tbl.item(r, 0)
+            n = ni.text().strip() if ni != None else ""
+
+            rp = self.rc(r, 1)
+            hu = self.rc(r, 2)
+            du = self.rc(r, 3)
+
+            if n == "" and rp == hu == du == None: continue
+
+            rc += 1
+
+            if n == "": errs.append(f"Row {r + 1}: enter a name.")
+            if rp == None: errs.append(f"Row {r + 1}: enter repeat times.")
+            if hu == du == None: errs.append(f"Row {r + 1}: enter a unit cost.")
+
+        if rc == 0:
+            errs.append("Enter at least one budget item.")
+
+        return errs
+
+    def fc(self, v, cur): # Format currency
+        if v == None: return "---"
+
+        try: return fmt(v, cur) # Note that no locale is passed. This is intentional as it will default to whatever the system locale is.
+        except (ValueError, TypeError): return f"{v:.2f} {cur}" # Fallback
+
     def bt(self): # Budget as text
-        # To do: Add validation (ensure all areas are filled out)
         hc = self.hcc.curscb.currentText() or "---"
         dc = self.dcc.curscb.currentText() or "---"
-
 
         ht = 0.0
         dt = 0.0
@@ -364,44 +402,41 @@ class gui(qw): # Main gui
             hu = self.rc(r, 2)
             du = self.rc(r, 3)
             rh = self.rc(r, 4)
-            rd = self.rc(r, 4)
+            rd = self.rc(r, 5)
 
             if n == "" and rp == hu == du == None: continue
             if n == "": continue
 
-
             rps = f"{rp:g}" if rp != None else "---"
-            hus = f"{hu:.2f}" if hu != None else "---"
-            dus = f"{du:.2f}" if du != None else "---"
-            rhs = f"{rh:.2f}" if rh != None else "---"
-            rds = f"{rd:.2f}" if rd != None else "---"
+            hus = self.fc(hu, hc)
+            dus = self.fc(du, dc)
+            rhs = self.fc(rh, hc)
+            rds = self.fc(rd, dc)
 
-            l.append(f"{n or f'Item {r + 1}'}: {rps} x {hus} {hc} / {dus} {dc} = {rhs} {hc} / {rds} {dc}")
+            l.append(f"{n}: {rps} x {hus} / {dus} = {rhs} / {rds}")
 
             if rh != None: ht += rh
             if rd != None: dt += rd
 
         l += [
             "",
-            f"Total: {ht:.2f} {hc}",
-            f"Total: {dt:.2f} {dc}",
-        ] # To do: Add proper formatting per currency (incl symbols)
-        breakpoint()
+            f"Total: {self.fc(ht, hc)}",
+            f"Total: {self.fc(dt, dc)}",
+        ]
+
         return "\n".join(l)
 
     def vcb(self): # View current budget
+        if len(errs := self.vb()) > 0:
+            qmb.warning(self, "Incomplete budget", "\n".join(errs))
+            return
+
         qmb.information(self, "Current budget", self.bt())
 
-    def sb(self): # Save budget
-        fn, _ = qfd.getSaveFileName(self, "Save budget", "budget.txt", "Text files (*.txt)")
+    def vdc(self): # View disclaimer
+        qmb.warning(self, "Disclaimer", "Past performance is not a reliable indicator of future performance.\nProgram may be subject to floating-point errors.")
 
-        if fn == "": return
-        if fn.lower().endswith(".txt") == False: fn += ".txt"
-
-        with open(fn, "w", encoding="UTF-8") as f:
-            f.write(self.bt())
-
-errs = { # Different potential error messages
+errs = { # Different potential error messages regarding API
     rq.exceptions.ConnectionError: "Could not connect to the server.",
     rq.exceptions.ConnectTimeout: "Could not connect to the server.",
     rq.exceptions.ReadTimeout: "The server connected, but took too long to send data.",
@@ -412,11 +447,13 @@ errs = { # Different potential error messages
 }
 
 if __name__ == "__main__": # Though not needed, it is nice to have
+    a = qa([])
     pth = os.path.join(os.path.dirname(os.path.abspath(__file__)), "rates")
     os.makedirs(pth, exist_ok=True)
     bkp = os.path.join(pth, "bkp.json")
 
     try:
+        raise rq.exceptions.ConnectionError
         res = rq.get("https://api.frankfurter.dev/v2/rates?base=AUD", timeout=(5,30))
         res.raise_for_status()
         res = res.json()
@@ -433,9 +470,14 @@ if __name__ == "__main__": # Though not needed, it is nice to have
         with open(bkp, "w", encoding="UTF-8") as f: json.dump(rt, f)
 
     except Exception as e:
-        print(errs.get(type(e), f"An unknown error has occured: {e}\n{type(e)}"))
+        ans = qmb.warning(None,
+            "Could not retrieve rates",
+            f"{errs.get(type(e), f"An unknown error has occurred: {e}")}\n\nUse fallback conversion rates?",
+            qmb.StandardButton.Yes | qmb.StandardButton.No,
+            qmb.StandardButton.Yes
+        )
 
-        if input("Use fallback conversion rates (Y/N)? ").strip().upper() == "Y":
+        if ans == qmb.StandardButton.Yes:
             with open(bkp, "r", encoding="UTF-8") as f: rt = json.load(f)
         else: sys.exit(1)
 

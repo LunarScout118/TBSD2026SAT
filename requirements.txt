@@ -1,0 +1,6 @@
+pycountry
+geonamescache
+requests
+Babel
+PyQt6
+python-dateutil
