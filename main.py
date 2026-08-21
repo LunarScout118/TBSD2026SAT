@@ -1,5 +1,5 @@
 # Tobey Beer - Holiday Budget Planner
-# Last edit: 20 Aug 2026
+# Last edit: 21 Aug 2026
 
 # Country + city list
 from pycountry import countries as cl
@@ -142,24 +142,36 @@ def ev(s): # Evaluate simple math functions
 
     return e(ast.parse(s, mode="eval").body)
 
-
-class dd(qsid): # Type checking for table cols 2 and 3 (Double/float delegate)
+class dd(qsid):
     def createEditor(self, p, *_):
         return qle(p)
 
     def setModelData(self, e, m, i):
-        try: v = ev(e.text())
+        t = e.text().strip()
+
+        if t == "":
+            m.setData(i, "")
+            return
+
+        try: v = ev(t)
         except (ValueError, TypeError, ZeroDivisionError, SyntaxError): return
 
         if v < 0: return
+
         m.setData(i, f"{v:g}")
 
-class id(dd): # Type checking for table col 2 (Integer delegate)
+class id(dd):
     def setModelData(self, e, m, i):
-        try: v = ev(e.text())
+        t = e.text().strip()
+        if t == "":
+            m.setData(i, "")
+            return
+
+        try: v = ev(t)
         except (ValueError, TypeError, ZeroDivisionError, SyntaxError): return
 
         if v < 0 or not float(v).is_integer(): return
+
         m.setData(i, str(int(v)))
 
 class btbl(qvbl): # Main budgeting table
@@ -176,6 +188,7 @@ class btbl(qvbl): # Main budgeting table
         self.tbl.setItemDelegateForColumn(1, id(self.tbl))
         self.tbl.setItemDelegateForColumn(2, dd(self.tbl))
         self.tbl.setItemDelegateForColumn(3, dd(self.tbl))
+
         self.addWidget(self.tbl)
 
         h = self.tbl.horizontalHeader()
@@ -186,25 +199,56 @@ class btbl(qvbl): # Main budgeting table
         self.arb = qb("Add row") # Self explanatory
         self.arb.clicked.connect(self.ar)
         self.br.addWidget(self.arb)
-        self.rrb = qb("Remove row")
+
+        self.rrb = qb("Remove selected row")
         self.rrb.clicked.connect(self.rr)
         self.br.addWidget(self.rrb)
 
+        self.drb = qb("Duplicate selected row")
+        self.drb.clicked.connect(self.dr)
+        self.br.addWidget(self.drb)
+
+        self.crb = qb("Clear selected row")
+        self.crb.clicked.connect(self.cr)
+        self.br.addWidget(self.crb)
+
         self.addLayout(self.br)
 
-    def ar(self): # Add row to table
-        self.tbl.insertRow(self.tbl.rowCount())
+    def ar(self): self.tbl.insertRow(self.tbl.rowCount()) # Append row to end of table
 
-    def rr(self): # Remove row from table
-        if self.tbl.rowCount() > 1: # Only remove if it doesn't clear the entire table
-            self.tbl.removeRow(self.tbl.rowCount() - 1)
+    def rr(self): # Remove selected row
+        if len(rows := self.tbl.selectionModel().selectedRows()) == 0: return
+        if self.tbl.rowCount() > 1: self.tbl.removeRow(rows[0].row())
+
+    def dr(self): # Duplicate selected row
+        if len(rows := self.tbl.selectionModel().selectedRows()) == 0: return
+
+        src = rows[0].row() + 1
+
+        with qsb(self.tbl):
+            self.tbl.insertRow(src)
+            for c in range(self.tbl.columnCount()):
+                i = self.tbl.item(src - 1, c)
+                if i != None: self.tbl.setItem(src, c, i.clone())
+
+        self.tbl.selectRow(src)
+
+    def cr(self): # Clear selected row
+        if len(rows := self.tbl.selectionModel().selectedRows()) == 0: return
+
+        r = rows[0].row()
+
+        with qsb(self.tbl):
+            for c in range(self.tbl.columnCount()): self.tbl.takeItem(r, c)
+
+        self.tbl.selectRow(r)
 
 class gui(qw): # Main gui
     def __init__(self):
         super().__init__()
         
         self.ml = qhbl(self) # Main layout
-        self.setWindowTitle("Holiday Budget Planner v0.8.6")
+        self.setWindowTitle("Holiday Budget Planner v1.0.1")
 
         self.col1 = qvbl()
         self.ccb = qhbl()
@@ -226,6 +270,7 @@ class gui(qw): # Main gui
 
         self.cr = 0.0 # Conversion rate
         self.crl = ql("Current conversion rate: ---") # Conversion rate label
+        self.crl.setToolTip("Disclaimer:\nPast performance is not a reliable indicator of future performance.\nProgram may be subject to floating-point errors.")
         self.dcc.addWidget(self.crl)
 
         self.ml.addLayout(self.col1)
@@ -240,11 +285,18 @@ class gui(qw): # Main gui
         self.usz()
 
         self.vcbb = qb("View current budget")
-        self.sbb = qb("View disclaimer")
         self.vcbb.clicked.connect(self.vcb)
-        self.sbb.clicked.connect(self.vdc)
         self.hcc.addWidget(self.vcbb)
-        self.dcc.addWidget(self.sbb)
+
+        self.fhl = qhbl() # File handler layout
+        self.sbb = qb("Save to file")
+        self.sbb.clicked.connect(self.sd)
+        self.fhl.addWidget(self.sbb)
+        self.lbb = qb("Load from file")
+        self.lbb.clicked.connect(self.ld)
+        self.fhl.addWidget(self.lbb)
+
+        self.dcc.addLayout(self.fhl)
     
     def udur(self): # Update displayed duration of holiday
         diff = rd(self.dcc.dt.selectedDate().toPyDate(), self.hcc.dt.selectedDate().toPyDate())
@@ -333,7 +385,7 @@ class gui(qw): # Main gui
                     i = self.btb.tbl.item(r, col)
                     if i != None: i.setText("")
 
-    def usz(self):
+    def usz(self): # Update window size
         self.btb.tbl.resizeColumnsToContents()
         self.btb.tbl.setMinimumWidth(self.btb.tbl.verticalHeader().width() + self.btb.tbl.horizontalHeader().length() + self.btb.tbl.frameWidth()*2)
         self.adjustSize()
@@ -349,7 +401,7 @@ class gui(qw): # Main gui
         if self.dcc.ciscb.currentText() == "": errs.append("Select a destination city.")
         if self.dcc.curscb.currentText() == "": errs.append("Select a destination currency.")
 
-        if self.cr <= 0: errs.append("A valid currency conversion rate is required.")
+        if self.cr <= 0: errs.append("A valid currency conversion rate is required.") # Note: May trigger if frankfurter doesn't have this currency
 
         rc = 0
 
@@ -359,15 +411,17 @@ class gui(qw): # Main gui
 
             rp = self.rc(r, 1)
             hu = self.rc(r, 2)
-            du = self.rc(r, 3)
+            # Used to have destination units here as well, but removed it as it seemed redundant
+            # (If hu is empty, du will be empty as well and vice versa)
 
-            if n == "" and rp == hu == du == None: continue
+            if n == "" and rp == hu == None: continue
 
             rc += 1
 
             if n == "": errs.append(f"Row {r + 1}: enter a name.")
             if rp == None: errs.append(f"Row {r + 1}: enter repeat times.")
-            if hu == du == None: errs.append(f"Row {r + 1}: enter a unit cost.")
+            if hu == None: errs.append(f"Row {r + 1}: enter a unit cost.")
+            if n == "" or rp == None or hu == None: errs.append("")
 
         if rc == 0:
             errs.append("Enter at least one budget item.")
@@ -433,8 +487,113 @@ class gui(qw): # Main gui
 
         qmb.information(self, "Current budget", self.bt())
 
-    def vdc(self): # View disclaimer
-        qmb.warning(self, "Disclaimer", "Past performance is not a reliable indicator of future performance.\nProgram may be subject to floating-point errors.")
+    def sd(self): # Save data to file
+        if len(errs := self.vb()) > 0:
+            qmb.warning(self, "Incomplete budget", "\n".join(errs))
+            return
+        
+        fn, _ = qfd.getSaveFileName(
+            self,
+            "Save holiday budget",
+            "",
+            "Holiday Budget Planner (*.hbp)" # Custom file extension!
+        )
+
+        if fn == "": return # User cancelled
+        fn = os.path.splitext(fn)[0] + ".hbp" # Force replace any file exts with .hbp
+        # Alternate version has it append ".hbp" iff the extension isn't .hbp:
+        # if not fn.lower().endswith(".hbp"): fn += ".hbp"
+
+        rows = []
+
+        for r in range(self.btb.tbl.rowCount()):
+            row = []
+            for c in range(4): # Only save editable columns
+                i = self.btb.tbl.item(r, c)
+                row.append(i.text() if i != None else "")
+            if any(v != "" for v in row): rows.append(row) # Ignore completely empty columns
+
+        data = {
+            "format": "Holiday Budget Planner",
+            "version": 1,
+
+            "home": {
+                "country": self.hcc.coscb.currentText(),
+                "city": self.hcc.ciscb.currentText(),
+                "currency": self.hcc.curscb.currentText(),
+                "date": self.hcc.dt.selectedDate().toString(Qt.DateFormat.ISODate),
+            },
+
+            "destination": {
+                "country": self.dcc.coscb.currentText(),
+                "city": self.dcc.ciscb.currentText(),
+                "currency": self.dcc.curscb.currentText(),
+                "date": self.dcc.dt.selectedDate().toString(Qt.DateFormat.ISODate),
+            },
+
+            "rows": rows,
+        }
+
+        try:
+            with open(fn, "w", encoding="UTF-8") as f: json.dump(data, f, indent=2)
+        except OSError as e: qmb.warning(self, "Could not save file", f"The file could not be saved:\n{e}")
+
+    def ld(self): # Load data from file
+        fn, _ = qfd.getOpenFileName(
+            self,
+            "Load holiday budget",
+            "",
+            "Holiday Budget Planner (*.hbp)"
+        )
+
+        if fn == "": return # User cancelled
+
+        try:
+            with open(fn, "r", encoding="UTF-8") as f: data = json.load(f)
+
+            if data.get("format") != "Holiday Budget Planner": raise ValueError("Not a Holiday Budget Planner file.")
+            if data.get("version") != 1: raise ValueError("Unsupported Holiday Budget Planner file version.")
+
+            home = data["home"]
+            dest = data["destination"]
+            rows = data["rows"]
+
+            if type(rows) != list: raise ValueError("Invalid budgeting table data.")
+
+            self.hcc.coscb.setCurrentText(home["country"])
+            self.hcc.ciscb.setCurrentText(home["city"])
+            self.hcc.curscb.setCurrentText(home["currency"])
+
+            self.dcc.coscb.setCurrentText(dest["country"])
+            self.dcc.ciscb.setCurrentText(dest["city"])
+            self.dcc.curscb.setCurrentText(dest["currency"])
+
+            hd = qd.fromString(home["date"], Qt.DateFormat.ISODate)
+            dd = qd.fromString(dest["date"], Qt.DateFormat.ISODate)
+
+            if hd.isValid() == False or dd.isValid() == False: raise ValueError("Invalid date data.")
+
+            self.hcc.dt.setSelectedDate(hd)
+            self.dcc.dt.setSelectedDate(dd)
+
+            self.dcc.dt.setMinimumDate(hd)
+            self.hcc.dt.setMaximumDate(dd)
+
+            self.udur()
+
+            with qsb(self.btb.tbl):
+                self.btb.tbl.clearContents()
+                self.btb.tbl.setRowCount(max(1, len(rows))) # Keep at least one row
+                for r, row in enumerate(rows):
+                    if type(row) != list or len(row) != 4: raise ValueError("Invalid budgeting table row.")
+
+                    for c, v in enumerate(row):
+                        if v != "": self.btb.tbl.setItem(r, c, qtwi(str(v)))
+
+            self.ur() # Recalculate all other data
+
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as e:
+            qmb.warning(self, "Could not load file", f"The file could not be loaded:\n{e}")
 
 errs = { # Different potential error messages regarding API
     rq.exceptions.ConnectionError: "Could not connect to the server.",
